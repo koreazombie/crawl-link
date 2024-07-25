@@ -128,3 +128,4 @@ if __name__ == '__main__':
     
     crawler = WebCrawler(host, depth_limit, rate_limit)
     crawler.run()
+

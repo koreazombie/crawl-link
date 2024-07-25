@@ -1,0 +1,3 @@
+aiohttp==3.9.5
+beautifulsoup4==4.12.3
+charset-normalizer==3.3.2
