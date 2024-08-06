@@ -21,46 +21,51 @@ class WebCrawler:
         logging.basicConfig(level=logging.DEBUG)
 
     async def fetch(self, session: ClientSession, url: str) -> str:
+        # URL의 HTML 콘텐츠를 가져오는 함수
         async with self.semaphore:
-            try:
-                async with session.get(url) as response:
-                    raw_content = await response.read()
-                    result = from_bytes(raw_content).best()
-                    logging.debug(f"Fetched HTML content from {url}")
-                    return str(result)
-            except aiohttp.ClientConnectorError as e:
-                logging.warning(f'Connection error: {e}, retrying...')
-                await asyncio.sleep(2)  # 2초 후 재시도
-                return await self.fetch(session, url)
-            except aiohttp.ServerDisconnectedError as e:
-                logging.warning(f'Server disconnected error: {e}, retrying...')
-                await asyncio.sleep(2)  # 2초 후 재시도
-                return await self.fetch(session, url)
-            except Exception as e:
-                logging.error(f'Decode error: {e}, skipping...')
-                return ""
+            for _ in range(3):  # 최대 3번 시도
+                try:
+                    async with session.get(url) as response:
+                        raw_content = await response.read()
+                        result = from_bytes(raw_content).best()
+                        logging.debug(f"Fetched HTML content from {url}")
+                        return str(result)
+                except (aiohttp.ClientConnectorError, aiohttp.ServerDisconnectedError) as e:
+                    logging.warning(f'Error: {e}, retrying...')
+                    await asyncio.sleep(2)  # 2초 후 재시도
+                except Exception as e:
+                    logging.error(f'Decode error: {e}, skipping...')
+                    return ""
+            return ""
 
     def get_representative_image(self, soup):
+        # 페이지의 대표 이미지를 가져오는 함수
         og_image = soup.find("meta", property="og:image")
-        if (og_image and og_image.get("content")):
+        if og_image and og_image.get("content"):
             return og_image["content"]
+        
         icon_link = soup.find("link", rel="icon")
-        if (icon_link and icon_link.get("href")):
+        if icon_link and icon_link.get("href"):
             return urljoin(self.host, icon_link["href"])
+        
         img_tag = soup.find("img")
-        if (img_tag and img_tag.get("src")):
+        if img_tag and img_tag.get("src"):
             return urljoin(self.host, img_tag["src"])
+        
         return None
 
     async def parse(self, session: ClientSession, url: str, depth: int):
-        if (depth > self.depth_limit or url in self.visited_urls):
+        # HTML 콘텐츠를 파싱하고 유용한 정보를 추출하는 함수
+        if depth > self.depth_limit or url in self.visited_urls:
             logging.debug(f"Skipping URL: {url}, Depth: {depth}, Already Visited: {url in self.visited_urls}")
             return
+        
         self.visited_urls.add(url)
         html = await self.fetch(session, url)
-        if (not html):
+        if not html:
             logging.debug(f"Empty HTML content for URL: {url}")
             return
+        
         soup = BeautifulSoup(html, 'html.parser')
         title = soup.title.string if soup.title else 'No Title'
         image = self.get_representative_image(soup)
@@ -73,29 +78,32 @@ class WebCrawler:
         tasks = []
         for link in links:
             absolute_link = urljoin(url, link)
-            if (self.is_valid_link(absolute_link)):
+            if self.is_valid_link(absolute_link):
                 logging.debug(f'Valid link found: {absolute_link}')
                 tasks.append(self.parse(session, absolute_link, depth + 1))
             else:
                 logging.debug(f'Invalid link skipped: {absolute_link}')
 
-        if (tasks):
+        if tasks:
             await asyncio.gather(*tasks)
 
     def is_valid_link(self, link: str) -> bool:
+        # 링크가 유효하고 동일한 호스트에 속하는지 확인하는 함수
         parsed_host = urlparse(self.host).netloc
         parsed_link = urlparse(link).netloc
         return parsed_host == parsed_link
 
     async def crawl(self):
+        # 크롤링 프로세스를 시작하는 함수
         connector = TCPConnector(ssl=False)
         async with aiohttp.ClientSession(connector=connector) as session:
             await self.parse(session, self.host, 1)
 
     def run(self):
+        # 크롤러를 실행하는 함수
         start_time = time.time()
         
-        # Create dictionary with host, date and time information
+        # 호스트, 날짜 및 시간 정보를 포함한 사전 생성
         date_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.result.append({
             'host': self.host,
@@ -106,9 +114,13 @@ class WebCrawler:
         asyncio.run(self.crawl())
         end_time = time.time()
         logging.info(f'Crawled {len(self.visited_urls)} pages in {end_time - start_time} seconds.')
+        
+        # 호스트 이름과 현재 날짜 및 시간을 사용하여 파일 이름 생성
         host_name = urlparse(self.host).netloc.replace('.', '_')
         file_date_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{host_name}_{file_date_time_str}.json"
+        
+        # 결과를 JSON 파일로 저장
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(self.result, f, ensure_ascii=False, indent=4)
         logging.info(json.dumps(self.result, ensure_ascii=False, indent=4))
@@ -128,4 +140,3 @@ if __name__ == '__main__':
     
     crawler = WebCrawler(host, depth_limit, rate_limit)
     crawler.run()
-
