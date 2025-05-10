@@ -25,7 +25,16 @@ class WebCrawler:
         async with self.semaphore:
             for _ in range(3):  # 최대 3번 시도
                 try:
-                    async with session.get(url) as response:
+                    user_agents = [
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
+                        'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36',
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.94 Safari/537.36'
+                    ]
+                    import random
+                    headers = {'User-Agent': random.choice(user_agents)}
+                    async with session.get(url, headers=headers) as response:
                         raw_content = await response.read()
                         result = from_bytes(raw_content).best()
                         logging.debug(f"Fetched HTML content from {url}")
