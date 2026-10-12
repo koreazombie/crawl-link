@@ -162,11 +162,10 @@ cython_debug/
 #.idea/
 .DS_Store
 
-# AI Maintenance Framework (local-only, not published)
+# AI Maintenance Framework v0.2.0 (local-only, not published)
+# v0.2.0 consolidates everything under /.ai/; the framework's own default
+# is to keep AGENTS.md/CLAUDE.md public (see .ai/PRIVACY.md), but this
+# project opts to keep both root entry points private too.
 /AGENTS.md
 /CLAUDE.md
 /.ai/
-/templates/
-/contracts/
-/verification/
-/docs/ai-framework/
