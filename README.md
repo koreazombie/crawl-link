@@ -7,8 +7,10 @@
 
 - 고성능 비동기 방식 `aiohttp` 사용
 - 과도한 재귀를 방지하기 위한 깊이 제한 크롤링
-- 서버 과부하 방지를 위한 요청 속도 제한
+- 서버 과부하 방지를 위한 요청 속도 제한 (초당 실제 요청 수 기준)
 - 페이지 제목과 대표 이미지 추출
+- HTTP 오류 응답(4xx/5xx) 페이지는 결과에서 제외
+- 동일 페이지의 `#fragment` 변형은 중복 방문하지 않음
 - 크롤링 진행 상황 및 오류 로그 기록
 - 결과를 JSON 파일로 출력
 
@@ -38,7 +40,7 @@ pip install aiohttp beautifulsoup4 charset_normalizer
 ### 예시
 
 ```sh
-python webcrawler.py https://example.com --depth 3 --rate 5
+python crawl-link.py https://example.com --depth 3 --rate 5
 ```
 
 ### 출력
@@ -65,12 +67,17 @@ python webcrawler.py https://example.com --depth 3 --rate 5
 
 ## 코드 개요
 
+### `RateLimiter` 클래스
+
+- 세마포어(동시 실행 수 제한)가 아니라 토큰 버킷 방식으로 초당 실제 요청 수를 제한합니다. `--rate`가 그대로 이 제한값으로 쓰입니다.
+
 ### `WebCrawler` 클래스
 
-- **`__init__(self, host, depth_limit, rate_limit=5)`**: 호스트, 깊이 제한, 속도 제한으로 크롤러를 초기화합니다.
-- **`fetch(self, session, url)`**: URL의 내용을 비동기적으로 가져옵니다.
-- **`get_representative_image(self, soup)`**: BeautifulSoup 객체에서 대표 이미지를 추출합니다.
-- **`parse(self, session, url, depth)`**: URL을 파싱하고, 링크를 추출하며, 추가 크롤링을 예약합니다.
+- **`__init__(self, host, depth_limit, rate_limit=5)`**: 호스트, 깊이 제한, 속도 제한(`RateLimiter`)으로 크롤러를 초기화합니다.
+- **`fetch(self, session, url)`**: URL의 내용을 비동기적으로 가져옵니다. 매 시도마다 속도 제한을 통과해야 하며, 연결 오류는 최대 3회 재시도하고, HTTP 4xx/5xx 응답은 재시도 없이 빈 결과로 처리합니다.
+- **`get_representative_image(self, soup)`**: `og:image` → favicon → 첫 `<img>` 순서로 대표 이미지를 탐색합니다(`data:` URI는 건너뜀).
+- **`parse(self, session, url, depth)`**: URL의 `#fragment`를 정규화한 뒤 파싱하고, 링크를 추출하며, 추가 크롤링을 예약합니다.
 - **`is_valid_link(self, link)`**: 링크가 유효하고 동일한 호스트에 속하는지 확인합니다.
+- **`_build_connector(self)`**: HTTPS 인증서 검증이 켜진 기본 커넥터를 생성합니다.
 - **`crawl(self)`**: 비동기 크롤링 프로세스를 관리합니다.
 - **`run(self)`**: 크롤러를 실행하고 결과를 JSON 파일로 저장합니다.
